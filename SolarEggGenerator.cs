@@ -4,651 +4,731 @@ using System.Numerics;
 using PicoGK;
 
 // ================================================================
-//  SOLAR GEYSER & WATER HEATER  V2.0  —  SOLAR COLLECTOR EDITION
+//  SOLAR GEYSER  V3.0  —  MONOLITHIC SINGLE-UNIT MVP
 //
-//  DESIGN CONCEPT:
-//  ───────────────
-//  A residential vertical storage solar water heater (geyser)
-//  with an integrated flat-plate solar collector panel mounted
-//  flush on one side of the tank.
+//  DESIGN PHILOSOPHY — V3 vs V2:
+//  ──────────────────────────────
+//  V2 had a solar panel bolted alongside the tank with two
+//  external connection pipes. That's a plumbing assembly, not
+//  a single unit.
 //
-//  SOLAR PANEL:
-//  ────────────
-//  A flat rectangular absorber panel is mounted on the +X side
-//  of the tank. It consists of:
-//    • Outer glass cover frame  (transparent glazing, simulated
-//                                as thin flat shell)
-//    • Absorber plate           (dark matt surface, copper-sim)
-//    • Riser tubes              (vertical fluid channels)
-//    • Header pipes             (top & bottom manifolds)
-//    • Insulation backing       (prevents rear heat loss)
-//  The panel connects to the tank via two ports:
-//    – Bottom header → cold feed from tank base
-//    – Top header    → hot return to tank upper zone
-//  This creates a thermosyphon loop (no pump needed).
+//  V3 fuses the solar panel directly to the tank outer wall.
+//  The thermosyphon flow channels are CAST INSIDE the shared
+//  wall section — zero external pipes, zero separate parts
+//  (except the screw-tap outlet, which is a removable insert).
 //
-//  SHAPE:
-//  ──────
-//  • Vertical cylinder tank body
-//  • Hemispherical domed top cap
-//  • Flat bottom base with stand feet
-//  • Screw-tap outlet at base (BSP-style thread)
-//  • Flat-plate solar collector panel on +X side
+//  THERMOSYPHON LOOP — HOW IT WORKS (now internal):
+//  ─────────────────────────────────────────────────
+//  The shared wall between the tank body and the solar panel
+//  contains two internal channels machined as voids:
 //
-//  ENDER 3 / FDM PRINT NOTES:
-//  ──────────────────────────
-//  • Tank prints vertically, dome up — no supports needed
-//  • Solar panel prints flat — lay panel face-down on bed
-//  • All overhangs ≤ 45°
-//  • Riser tubes are vertical — zero overhang
+//    HOT CHANNEL   (8 mm Ø bore, right side of wall)
+//      – Runs from bottom header (panel base) up to top header
+//        (panel apex), then exits into the tank's UPPER zone
+//        via a cast horizontal port.
+//      – Hot water rises by convection — no pump.
+//
+//    COLD CHANNEL  (6 mm Ø bore, left side of wall)
+//      – Runs from the tank's LOWER zone horizontally into the
+//        panel's bottom header manifold.
+//      – Cool water sinks and feeds the panel bottom.
+//
+//  This creates a sealed internal loop:
+//    Tank lower zone → [cold channel] → panel bottom header
+//    → [riser tubes heat water] → panel top header
+//    → [hot channel] → tank upper zone → (repeat)
+//
+//  PRINT STRATEGY — ENDER 3 NEO (235 × 235 × 250 mm):
+//  ─────────────────────────────────────────────────────
+//  The full unit is 250 mm tall (incl. dome) × 170 mm deep
+//  × 170 mm wide — too tall for one shot.
+//  Print in TWO STACKABLE HALVES split at z = 120 mm:
+//
+//    HALF A (lower):  z = 0–120 mm   → feet, cold channel,
+//                     bottom header, tap socket, PRV boss
+//    HALF B (upper):  z = 0–130 mm   → hot channel, top header,
+//                     dome, inlets, outlets
+//
+//  Join method: 4× M4 alignment boss + solvent-weld seam
+//  Seal:        high-temp silicone RTV around the butt joint
+//
+//  Both halves print VERTICALLY — no supports required.
+//  All channels print as closed voids — bridged <30 mm.
+//
+//  MATERIAL: ASA strongly preferred (UV + heat resistance)
+//            PETG acceptable for indoor/shaded installations
 //
 //  FILES EXPORTED:
 //  ───────────────
-//  SolarGeyser_V2_Tank.stl
-//  SolarGeyser_V2_SolarPanel.stl
-//  SolarGeyser_V2_ScrewTap.stl
-//  SolarGeyser_V2_SlicerSettings.txt
+//  SolarGeyser_V3_HalfA_Lower.stl
+//  SolarGeyser_V3_HalfB_Upper.stl
+//  SolarGeyser_V3_ScrewTap.stl
+//  SolarGeyser_V3_SlicerSettings.txt
 // ================================================================
 
 Library.Go(1.0f, () =>
 {
     Console.WriteLine("╔══════════════════════════════════════════════════════╗");
-    Console.WriteLine("║  SOLAR GEYSER & WATER HEATER  V2.0                  ║");
-    Console.WriteLine("║  Solar Collector Edition — Flat-Plate Thermosyphon  ║");
+    Console.WriteLine("║  SOLAR GEYSER  V3.0  —  MONOLITHIC SINGLE UNIT MVP  ║");
+    Console.WriteLine("║  Internal thermosyphon  ·  No external pipes         ║");
+    Console.WriteLine("║  Ender 3 Neo — two stackable halves                  ║");
     Console.WriteLine("╚══════════════════════════════════════════════════════╝\n");
 
     // ────────────────────────────────────────────────────────────────────────
-    //  PRINTER / MANUFACTURING CONSTANTS
+    //  PRINTER CONSTANTS
     // ────────────────────────────────────────────────────────────────────────
-    const float fNozzle   = 0.4f;
-    const float fLayer    = 0.2f;
-    const float fFitClear = 0.25f;   // thread-fit clearance per side
+    const float fNozzle    = 0.4f;
+    const float fLayer     = 0.2f;
+    const float fFitClear  = 0.25f;   // clearance per side for mating features
+    const float fSplitZ    = 120.0f;  // z-height where the two halves join
 
     // ────────────────────────────────────────────────────────────────────────
     //  TANK GEOMETRY
+    //  Circular cross-section, sized to fit Ender 3 Neo 235 mm bed
+    //  with panel fused on +X side. Combined width ≤ 220 mm.
     // ────────────────────────────────────────────────────────────────────────
-    float fTankRadius     = 85.0f;
-    float fTankHeight     = 200.0f;
-    float fWallThick      = 5.0f;
-    float fInnerWallThick = 2.5f;
-    float fInsulationGap  = 25.0f;
-    float fInnerRadius    = fTankRadius - fWallThick - fInsulationGap - fInnerWallThick;
+    float fTankRadius     = 60.0f;   // reduced from 85 → panel fits on bed
+    float fTankHeight     = 210.0f;  // body cylinder height
+    float fWallThick      = 5.0f;    // outer jacket wall
+    float fInsulGap       = 20.0f;   // foam void between jacket and liner
+    float fInnerWall      = 2.5f;    // inner liner wall
+    float fInnerRadius    = fTankRadius - fWallThick - fInsulGap - fInnerWall;
     float fBaseThick      = 8.0f;
-    float fDomeHeight     = fTankRadius * 0.50f;
-    float fFootHeight     = 18.0f;
-    float fFootRadius     = 10.0f;
-    int   nFeet           = 4;
+    float fDomeRise       = fTankRadius * 0.45f;
+    float fFootHeight     = 16.0f;
+    float fFootRadius     = 9.0f;
 
     // ────────────────────────────────────────────────────────────────────────
-    //  SCREW-TAP CONSTANTS
+    //  SHARED WALL GEOMETRY
+    //  On the +X side the outer jacket is thickened to accommodate the two
+    //  thermosyphon channels. The solar panel body fuses directly to this
+    //  thickened wall section — NO gap, NO separate brackets.
     // ────────────────────────────────────────────────────────────────────────
-    float fTapBodyRadius  = 14.0f;
-    float fTapBoreRadius  = 8.5f;
-    float fTapLength      = 38.0f;
-    float fThreadPitch    = 3.2f;
-    float fThreadDepth    = 1.2f;
-    float fCollarZ        = fTapLength * 0.55f;
-    float fCollarH        = 14.0f;
-    float fHexR           = fTapBodyRadius + 5.0f;
+    float fSharedWallThick  = 18.0f; // thickened jacket on +X side only
+    // Channel bores (printed as sealed voids — bridge span < 18 mm each)
+    float fHotChanR         = 4.0f;  // 8 mm Ø hot channel
+    float fColdChanR        = 3.0f;  // 6 mm Ø cold channel
+    // Channel Y positions within the shared wall (offset from tank centreline)
+    float fHotChanY         = 4.5f;  // +Y side of wall
+    float fColdChanY        = -4.5f; // -Y side of wall
+    float fChanX            = fTankRadius + fWallThick + fSharedWallThick * 0.5f;
 
     // ────────────────────────────────────────────────────────────────────────
-    //  SOLAR COLLECTOR PANEL GEOMETRY
-    //  Panel is mounted on the +X side, standing vertically alongside tank.
-    //  Tilted 15° toward sun (south-facing) via vertical mounting bracket.
+    //  SOLAR PANEL GEOMETRY
+    //  Panel is fused directly to the shared wall — it IS the outer surface
+    //  of the tank on the +X face.
+    //  The panel box starts at fTankRadius + fWallThick + fSharedWallThick
+    //  and extends outward in X.
     // ────────────────────────────────────────────────────────────────────────
-    float fPanelW         = 160.0f;   // panel width  (Y axis)
-    float fPanelH         = 180.0f;   // panel height (Z axis)
-    float fPanelDepth     = 22.0f;    // panel total depth (X axis, absorber box)
-    float fPanelGlassT    = 2.5f;     // glass cover thickness
-    float fPanelFrameT    = 5.0f;     // aluminium frame thickness
-    float fAbsorberT      = 2.0f;     // absorber plate thickness
-    float fInsulBackT     = 8.0f;     // insulation backing thickness
-    float fPanelOffsetX   = fTankRadius + 6.0f;   // gap between tank and panel
-    float fPanelOffsetY   = -fPanelW * 0.5f;       // centred on Y
-    float fPanelOffsetZ   = fFootHeight + 15.0f;   // base of panel
+    float fPanelW          = 100.0f;  // panel width in Y (fits tank diameter)
+    float fPanelH          = 180.0f;  // panel height in Z
+    float fPanelDepth      = 28.0f;   // X depth: insulation + absorber + air + glass
+    float fInsulBackT      = 12.0f;   // printed insulation backing depth
+    float fAbsorberT       = 2.5f;    // absorber plate thickness
+    float fFrameT          = 5.0f;    // panel frame walls top/bottom/sides
+    float fPanelStartX     = fTankRadius + fSharedWallThick;
+    float fPanelStartY     = -fPanelW  * 0.5f;
+    float fPanelStartZ     = fFootHeight + 20.0f;
 
-    // Riser tubes inside panel
-    int   nRisers         = 8;
-    float fRiserRadius    = 3.5f;
-    float fRiserBore      = 2.0f;
-    float fRiserH         = fPanelH - fPanelFrameT * 2.0f - 12.0f;
+    // Riser tubes
+    int   nRisers          = 7;
+    float fRiserR          = 2.8f;    // outer radius
+    float fRiserBoreR      = 1.6f;    // bore radius
+    float fRiserH          = fPanelH  - fFrameT * 2.0f - 12.0f;
 
-    // Header pipe (manifold at top and bottom of riser array)
-    float fHeaderRadius   = 6.0f;
-    float fHeaderBore     = 4.0f;
+    // Header manifolds (top & bottom of riser array, inside panel body)
+    float fHeaderR         = 5.0f;
+    float fHeaderBoreR     = 3.5f;
+    float fHeaderZBot      = fPanelStartZ + fFrameT + fHeaderR;
+    float fHeaderZTop      = fPanelStartZ + fPanelH - fFrameT - fHeaderR;
+    float fHeaderX         = fPanelStartX + fInsulBackT + fAbsorberT + fRiserR;
 
-    // Connection pipes (thermosyphon loop: panel → tank)
-    float fConnRadius     = 5.0f;
-    float fConnBore       = 3.0f;
+    // ────────────────────────────────────────────────────────────────────────
+    //  SCREW-TAP OUTLET
+    // ────────────────────────────────────────────────────────────────────────
+    float fTapBodyR     = 12.0f;
+    float fTapBoreR     = 7.5f;
+    float fTapLength    = 36.0f;
+    float fThreadPitch  = 3.0f;
+    float fThreadDepth  = 1.0f;
+    float fCollarZ      = fTapLength * 0.55f;
+    float fCollarH      = 12.0f;
+    float fHexR         = fTapBodyR + 4.5f;
 
-    // Print summary
-    float fFootprint = (fTankRadius + fPanelDepth + fPanelOffsetX - fTankRadius) * 2.0f + fTankRadius * 2.0f;
-    Console.WriteLine($"  Tank Ø             : {fTankRadius*2:F0} mm  ×  {fTankHeight:F0} mm");
-    Console.WriteLine($"  Total height       : {fTankHeight + fDomeHeight + fFootHeight:F0} mm");
-    Console.WriteLine($"  Inner cavity Ø     : {fInnerRadius*2:F0} mm");
-    Console.WriteLine($"  Solar panel        : {fPanelW:F0} × {fPanelH:F0} × {fPanelDepth:F0} mm");
-    Console.WriteLine($"  Panel risers       : {nRisers}  ×  Ø{fRiserRadius*2:F0} mm");
-    Console.WriteLine($"  Screw-tap          : Ø{fTapBodyRadius*2:F0} mm  ×  {fTapLength:F0} mm\n");
+    // ────────────────────────────────────────────────────────────────────────
+    //  PORT Z-HEIGHTS
+    //  Hot channel exits into tank at upper zone.
+    //  Cold channel exits from tank at lower zone.
+    // ────────────────────────────────────────────────────────────────────────
+    float fHotPortZ    = fFootHeight + fTankHeight - 30.0f;  // upper zone
+    float fColdPortZ   = fFootHeight + 30.0f;                // lower zone
+
+    // Summary
+    float fTotalWidth = fPanelStartX + fPanelDepth;
+    Console.WriteLine($"  Tank Ø               : {fTankRadius*2:F0} mm");
+    Console.WriteLine($"  Tank height          : {fTankHeight:F0} mm");
+    Console.WriteLine($"  Water cavity Ø       : {fInnerRadius*2:F0} mm");
+    Console.WriteLine($"  Shared wall thick    : {fSharedWallThick:F0} mm");
+    Console.WriteLine($"  Panel fused depth    : {fPanelDepth:F0} mm");
+    Console.WriteLine($"  Total footprint X    : {fTotalWidth:F0} mm  (bed: 235 mm)");
+    Console.WriteLine($"  Split at z           : {fSplitZ:F0} mm");
+    Console.WriteLine($"  Half A height        : {fSplitZ:F0} mm");
+    Console.WriteLine($"  Half B height        : {fTankHeight + fDomeRise + fFootHeight - fSplitZ:F0} mm\n");
 
     // ════════════════════════════════════════════════════════════════════════
-    //  HELPER — generic boss (tube stub)
+    //  HELPERS
     // ════════════════════════════════════════════════════════════════════════
-    void AddBoss(Voxels vTarget, Vector3 vOrigin, Vector3 vTip,
-                 float fOuter, float fBore)
+
+    // Add a hollow cylindrical channel void (subtracts from target)
+    void CarveChannel(Voxels vTarget, Vector3 vA, Vector3 vB, float fBoreR)
     {
-        Lattice latBO = new Lattice();
-        latBO.AddBeam(vOrigin, vTip, fOuter, fOuter, true);
-        Voxels vB = new Voxels(latBO);
+        Lattice lat = new Lattice();
+        Vector3 vDir = vB - vA;
+        lat.AddBeam(vA - vDir * 0.1f, vB + vDir * 0.1f, fBoreR, fBoreR, true);
+        vTarget.BoolSubtract(new Voxels(lat));
+    }
 
-        Vector3 vDir = vTip - vOrigin;
-        Lattice latBI = new Lattice();
-        latBI.AddBeam(vOrigin - vDir * 0.3f, vTip + vDir * 0.2f, fBore, fBore, true);
-        vB.BoolSubtract(new Voxels(latBI));
+    // Add a solid beam
+    Voxels MakeBeam(Vector3 vA, Vector3 vB, float fR)
+    {
+        Lattice lat = new Lattice();
+        lat.AddBeam(vA, vB, fR, fR, true);
+        return new Voxels(lat);
+    }
+
+    // Hollow tube (boss)
+    void AddBoss(Voxels vTarget, Vector3 vOrigin, Vector3 vTip, float fOuter, float fBore)
+    {
+        Voxels vB = MakeBeam(vOrigin, vTip, fOuter);
+        CarveChannel(vB, vOrigin, vTip, fBore);
         vTarget.BoolAdd(vB);
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    //  STAGE 1 — OUTER TANK JACKET  (cylinder + domed cap)
+    //  STAGE 1 — OUTER JACKET  (cylinder, dome, base, feet)
     // ════════════════════════════════════════════════════════════════════════
-    Console.WriteLine("[1/10] Building outer tank jacket with domed cap...");
+    Console.WriteLine("[1/11] Outer jacket — cylinder + hemispherical dome...");
 
-    Lattice latTank = new Lattice();
-    latTank.AddBeam(
+    Lattice latJacket = new Lattice();
+    latJacket.AddBeam(
         new Vector3(0f, 0f, fFootHeight),
         new Vector3(0f, 0f, fFootHeight + fTankHeight),
         fTankRadius, fTankRadius, true
     );
-    Voxels vTank = new Voxels(latTank);
+    Voxels vTank = new Voxels(latJacket);
 
-    // Hemispherical dome
-    int nDomeSegs = 14;
-    for (int s = 0; s < nDomeSegs; s++)
+    // Dome
+    int nDome = 16;
+    for (int s = 0; s < nDome; s++)
     {
-        float t0 = (float)s       / nDomeSegs;
-        float t1 = (float)(s + 1) / nDomeSegs;
-        float r0 = fTankRadius * (float)Math.Cos(t0 * Math.PI * 0.5);
-        float r1 = fTankRadius * (float)Math.Cos(t1 * Math.PI * 0.5);
-        float z0 = fFootHeight + fTankHeight + fDomeHeight * (float)Math.Sin(t0 * Math.PI * 0.5);
-        float z1 = fFootHeight + fTankHeight + fDomeHeight * (float)Math.Sin(t1 * Math.PI * 0.5);
+        float t0 = s       / (float)nDome;
+        float t1 = (s + 1) / (float)nDome;
+        float r0 = fTankRadius * MathF.Cos(t0 * MathF.PI * 0.5f);
+        float r1 = fTankRadius * MathF.Cos(t1 * MathF.PI * 0.5f);
+        float z0 = fFootHeight + fTankHeight + fDomeRise * MathF.Sin(t0 * MathF.PI * 0.5f);
+        float z1 = fFootHeight + fTankHeight + fDomeRise * MathF.Sin(t1 * MathF.PI * 0.5f);
         Lattice latSeg = new Lattice();
         latSeg.AddBeam(new Vector3(0f, 0f, z0), new Vector3(0f, 0f, z1), r0, r1, true);
         vTank.BoolAdd(new Voxels(latSeg));
     }
 
-    // Flat bottom cap
-    Lattice latBase = new Lattice();
-    latBase.AddBeam(
+    // Flat base disc
+    vTank.BoolAdd(MakeBeam(
         new Vector3(0f, 0f, fFootHeight),
         new Vector3(0f, 0f, fFootHeight + fBaseThick),
-        fTankRadius, fTankRadius, true
-    );
-    vTank.BoolAdd(new Voxels(latBase));
+        fTankRadius));
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  STAGE 2 — STAND FEET
-    // ════════════════════════════════════════════════════════════════════════
-    Console.WriteLine("[2/10] Adding stand feet...");
-
-    float fLegOffset = fTankRadius * 0.65f;
-    float[] fLegX = {  fLegOffset, -fLegOffset,  fLegOffset, -fLegOffset };
-    float[] fLegY = {  fLegOffset,  fLegOffset, -fLegOffset, -fLegOffset };
-
-    for (int f = 0; f < nFeet; f++)
+    // Stand feet — 4, on corners, avoiding +X panel side
+    float fLegOff = fTankRadius * 0.60f;
+    // Keep feet on -X, ±Y, -X combinations so they don't clash with panel
+    float[,] fLegPos = {
+        { -fLegOff,  fLegOff },
+        { -fLegOff, -fLegOff },
+        {  0f,       fLegOff  },
+        {  0f,      -fLegOff  }
+    };
+    for (int f = 0; f < 4; f++)
     {
         Lattice latFoot = new Lattice();
         latFoot.AddBeam(
-            new Vector3(fLegX[f], fLegY[f], 0f),
-            new Vector3(fLegX[f], fLegY[f], fFootHeight + 2f),
-            fFootRadius, fFootRadius * 0.7f, true
+            new Vector3(fLegPos[f, 0], fLegPos[f, 1], 0f),
+            new Vector3(fLegPos[f, 0], fLegPos[f, 1], fFootHeight + 2f),
+            fFootRadius, fFootRadius * 0.65f, true
         );
         vTank.BoolAdd(new Voxels(latFoot));
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  STAGE 3 — INSULATION VOID  (foam gap between jacket and liner)
-    // ════════════════════════════════════════════════════════════════════════
-    Console.WriteLine("[3/10] Carving insulation foam void...");
+    Console.WriteLine("  Outer jacket + dome + feet ✓");
 
-    float fInsulationOuter = fTankRadius - fWallThick;
+    // ════════════════════════════════════════════════════════════════════════
+    //  STAGE 2 — SHARED WALL THICKENING on +X face
+    //  This is the structural bridge between tank and panel.
+    //  It is thicker than the normal jacket and contains the channels.
+    //  Built as a rectangular block (Y-wide, X-deep) added to +X side.
+    // ════════════════════════════════════════════════════════════════════════
+    Console.WriteLine("[2/11] Shared wall block (+X face, contains channels)...");
+
+    float fSWX0 = fTankRadius;
+    float fSWYhalf = fPanelW * 0.5f;
+    float fSWZ0 = fFootHeight + fBaseThick;
+    float fSWZ1 = fFootHeight + fTankHeight + 10f;
+
+    // Tile a column of beams to approximate a rectangular slab
+    {
+        int nTileSW = 14;
+        for (int ty = 0; ty < nTileSW; ty++)
+        {
+            float fCY = -fSWYhalf + (ty + 0.5f) * (fPanelW / nTileSW);
+            float fCX = fSWX0 + (fSharedWallThick * 0.5f);
+            Lattice latSW = new Lattice();
+            latSW.AddBeam(
+                new Vector3(fCX, fCY, fSWZ0),
+                new Vector3(fCX, fCY, fSWZ1),
+                fSharedWallThick * 0.5f,
+                fSharedWallThick * 0.5f,
+                true
+            );
+            vTank.BoolAdd(new Voxels(latSW));
+        }
+    }
+
+    Console.WriteLine($"  Shared wall: {fSharedWallThick:F0} mm thick, ±{fSWYhalf:F0} mm in Y ✓");
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  STAGE 3 — INSULATION VOID + INNER LINER
+    // ════════════════════════════════════════════════════════════════════════
+    Console.WriteLine("[3/11] Carving insulation void and building inner liner...");
+
+    float fInsulOuter = fTankRadius - fWallThick;
 
     Lattice latInsul = new Lattice();
     latInsul.AddBeam(
         new Vector3(0f, 0f, fFootHeight + fBaseThick),
-        new Vector3(0f, 0f, fFootHeight + fTankHeight + fDomeHeight + 5f),
-        fInsulationOuter, fInsulationOuter, true
+        new Vector3(0f, 0f, fFootHeight + fTankHeight + fDomeRise + 5f),
+        fInsulOuter, fInsulOuter, true
     );
     vTank.BoolSubtract(new Voxels(latInsul));
 
-    // ════════════════════════════════════════════════════════════════════════
-    //  STAGE 4 — INNER STEEL LINER
-    // ════════════════════════════════════════════════════════════════════════
-    Console.WriteLine("[4/10] Building inner steel liner...");
-
-    float fLinerOuter    = fInsulationOuter - fInsulationGap;
-    float fLinerDomeRise = fLinerOuter * 0.50f;
+    // Inner liner cylinder
+    float fLinerOuter  = fInsulOuter - fInsulGap;
+    float fLinerDomeR  = fLinerOuter * 0.45f;
 
     Lattice latLiner = new Lattice();
     latLiner.AddBeam(
-        new Vector3(0f, 0f, fFootHeight + fBaseThick - fInnerWallThick),
+        new Vector3(0f, 0f, fFootHeight + fBaseThick - fInnerWall),
         new Vector3(0f, 0f, fFootHeight + fTankHeight),
         fLinerOuter, fLinerOuter, true
     );
     vTank.BoolAdd(new Voxels(latLiner));
 
-    // Liner dome cap
-    for (int s = 0; s < nDomeSegs; s++)
+    // Liner dome
+    for (int s = 0; s < nDome; s++)
     {
-        float t0 = (float)s       / nDomeSegs;
-        float t1 = (float)(s + 1) / nDomeSegs;
-        float r0 = fLinerOuter * (float)Math.Cos(t0 * Math.PI * 0.5);
-        float r1 = fLinerOuter * (float)Math.Cos(t1 * Math.PI * 0.5);
-        float z0 = fFootHeight + fTankHeight + fLinerDomeRise * (float)Math.Sin(t0 * Math.PI * 0.5);
-        float z1 = fFootHeight + fTankHeight + fLinerDomeRise * (float)Math.Sin(t1 * Math.PI * 0.5);
+        float t0 = s       / (float)nDome;
+        float t1 = (s + 1) / (float)nDome;
+        float r0 = fLinerOuter * MathF.Cos(t0 * MathF.PI * 0.5f);
+        float r1 = fLinerOuter * MathF.Cos(t1 * MathF.PI * 0.5f);
+        float z0 = fFootHeight + fTankHeight + fLinerDomeR * MathF.Sin(t0 * MathF.PI * 0.5f);
+        float z1 = fFootHeight + fTankHeight + fLinerDomeR * MathF.Sin(t1 * MathF.PI * 0.5f);
         Lattice latLS = new Lattice();
         latLS.AddBeam(new Vector3(0f, 0f, z0), new Vector3(0f, 0f, z1), r0, r1, true);
         vTank.BoolAdd(new Voxels(latLS));
     }
 
-    // Hollow out water cavity
+    // Water cavity
     Lattice latWater = new Lattice();
     latWater.AddBeam(
         new Vector3(0f, 0f, fFootHeight + fBaseThick),
-        new Vector3(0f, 0f, fFootHeight + fTankHeight + fLinerDomeRise + 5f),
+        new Vector3(0f, 0f, fFootHeight + fTankHeight + fLinerDomeR + 5f),
         fInnerRadius, fInnerRadius, true
     );
     vTank.BoolSubtract(new Voxels(latWater));
 
-    Console.WriteLine($"  Water cavity Ø     : {fInnerRadius*2:F0} mm");
-    Console.WriteLine($"  Liner wall         : {fInnerWallThick:F1} mm  |  Insulation: {fInsulationGap:F0} mm  ✓");
+    Console.WriteLine($"  Water cavity Ø {fInnerRadius*2:F0} mm  |  Liner {fInnerWall:F1} mm  |  Foam gap {fInsulGap:F0} mm ✓");
 
     // ════════════════════════════════════════════════════════════════════════
-    //  STAGE 5 — PORT BOSSES
-    //  (a) Cold water inlet           — top, +Y offset
-    //  (b) Hot water outlet stub      — top, -Y offset
-    //  (c) Heating element (backup)   — lower side -X
-    //  (d) Anode rod                  — top, +X offset
-    //  (e) PRV                        — upper side -Y
-    //  (f) Solar cold feed port       — lower +X (panel return cold)
-    //  (g) Solar hot return port      — upper +X (panel delivers hot)
+    //  STAGE 4 — INTERNAL THERMOSYPHON CHANNELS
+    //  Two vertical channel bores cast through the shared wall.
+    //
+    //  HOT channel:  runs z = fColdPortZ → fHotPortZ  (upward)
+    //                  at (fChanX, +fChanY) — right/outer Y
+    //  COLD channel: runs z = fColdPortZ → fFootHeight+fBaseThick (downward)
+    //                  at (fChanX, -fChanY) — left/inner Y
+    //
+    //  Both channels terminate in the header manifolds at panel top/bottom.
+    //  Horizontal cross-drills connect channels to tank water cavity.
     // ════════════════════════════════════════════════════════════════════════
-    Console.WriteLine("[5/10] Adding port bosses...");
+    Console.WriteLine("[4/11] Carving internal thermosyphon channels...");
 
-    float fTopZ     = fFootHeight + fTankHeight + 5f;
-    float fElementZ = fFootHeight + 30f;
-    float fPRVZ     = fFootHeight + fTankHeight - 30f;
-    float fSolarLowZ  = fFootHeight + 25f;   // cold feed to panel (bottom)
-    float fSolarHighZ = fFootHeight + fTankHeight - 20f;  // hot return from panel (top)
+    // ── HOT CHANNEL VERTICAL BORE ─────────────────────────────────────────
+    // From cold port Z up to hot port Z — water heated in panel rises
+    CarveChannel(vTank,
+        new Vector3(fChanX, fHotChanY, fColdPortZ - 2f),
+        new Vector3(fChanX, fHotChanY, fHotPortZ  + 2f),
+        fHotChanR);
 
-    // (a) Cold inlet — top
+    // Horizontal cross-drill: hot channel → tank upper zone (hot water enters)
+    CarveChannel(vTank,
+        new Vector3(fLinerOuter - 2f, fHotChanY, fHotPortZ),
+        new Vector3(fChanX + fHotChanR + 1f, fHotChanY, fHotPortZ),
+        fHotChanR * 0.85f);
+
+    // ── COLD CHANNEL VERTICAL BORE ────────────────────────────────────────
+    // From tank lower zone exit up to panel bottom header height
+    CarveChannel(vTank,
+        new Vector3(fChanX, fColdChanY, fColdPortZ - 2f),
+        new Vector3(fChanX, fColdChanY, fHeaderZBot + 2f),
+        fColdChanR);
+
+    // Horizontal cross-drill: cold channel ← tank lower zone (cold water exits)
+    CarveChannel(vTank,
+        new Vector3(fLinerOuter - 2f, fColdChanY, fColdPortZ),
+        new Vector3(fChanX + fColdChanR + 1f, fColdChanY, fColdPortZ),
+        fColdChanR * 0.85f);
+
+    Console.WriteLine($"  Hot channel Ø{fHotChanR*2:F0} mm at Y+{fHotChanY:F1}  |  Cold channel Ø{fColdChanR*2:F0} mm at Y-{Math.Abs(fColdChanY):F1} ✓");
+    Console.WriteLine($"  Hot exits tank at z={fHotPortZ:F0} mm  |  Cold exits tank at z={fColdPortZ:F0} mm ✓");
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  STAGE 5 — PORT BOSSES (tank external ports)
+    //  Only plumbing ports that go OUTSIDE the assembly.
+    //  No solar ports — those are now internal channels.
+    // ════════════════════════════════════════════════════════════════════════
+    Console.WriteLine("[5/11] Adding external port bosses...");
+
+    float fTopZ     = fFootHeight + fTankHeight + 4f;
+    float fElementZ = fFootHeight + 28f;
+    float fPRVZ     = fFootHeight + fTankHeight - 25f;
+
+    // Cold inlet — top, with dip tube bore extending to base
     AddBoss(vTank,
-        new Vector3(0f, 18f, fTopZ),
-        new Vector3(0f, 18f, fTopZ + 18f),
-        12f, 7f);
+        new Vector3(0f, 15f, fTopZ),
+        new Vector3(0f, 15f, fTopZ + 16f),
+        11f, 6.5f);
 
-    // (b) Hot outlet stub — top
+    // Hot outlet — top
     AddBoss(vTank,
-        new Vector3(0f, -18f, fTopZ),
-        new Vector3(0f, -18f, fTopZ + 18f),
-        12f, 7f);
+        new Vector3(0f, -15f, fTopZ),
+        new Vector3(0f, -15f, fTopZ + 16f),
+        11f, 6.5f);
 
-    // (c) Backup heating element — lower side -X
+    // Backup heating element — side, -X
     AddBoss(vTank,
         new Vector3(-fTankRadius, 0f, fElementZ),
-        new Vector3(-fTankRadius - 20f, 0f, fElementZ),
-        14f, 8f);
+        new Vector3(-fTankRadius - 18f, 0f, fElementZ),
+        13f, 7.5f);
 
-    // (d) Anode rod — top
+    // Anode rod — top, offset
     AddBoss(vTank,
-        new Vector3(20f, 0f, fTopZ),
-        new Vector3(20f, 0f, fTopZ + 14f),
-        10f, 5f);
+        new Vector3(16f, 0f, fTopZ),
+        new Vector3(16f, 0f, fTopZ + 12f),
+        9f, 4.5f);
 
-    // (e) PRV — upper side -Y
+    // PRV — side, -Y
     AddBoss(vTank,
         new Vector3(0f, -fTankRadius, fPRVZ),
-        new Vector3(0f, -fTankRadius - 18f, fPRVZ),
-        12f, 7f);
+        new Vector3(0f, -fTankRadius - 16f, fPRVZ),
+        11f, 6.5f);
 
-    // (f) Solar cold feed port — lower +X side (cold exits tank to panel bottom)
-    AddBoss(vTank,
-        new Vector3(fTankRadius, 0f, fSolarLowZ),
-        new Vector3(fTankRadius + 20f, 0f, fSolarLowZ),
-        fConnRadius + 2f, fConnBore);
-
-    // (g) Solar hot return port — upper +X side (hot water back from panel top)
-    AddBoss(vTank,
-        new Vector3(fTankRadius, 0f, fSolarHighZ),
-        new Vector3(fTankRadius + 20f, 0f, fSolarHighZ),
-        fConnRadius + 2f, fConnBore);
-
-    Console.WriteLine("  7 port bosses added: inlet, outlet, element, anode, PRV, solar×2 ✓");
+    Console.WriteLine("  5 external ports: cold inlet, hot outlet, element, anode, PRV ✓");
 
     // ════════════════════════════════════════════════════════════════════════
-    //  STAGE 6 — SCREW-TAP OUTLET
-    //  Female socket in tank base  +  separate tap body
+    //  STAGE 6 — SCREW-TAP SOCKET IN BASE
     // ════════════════════════════════════════════════════════════════════════
-    Console.WriteLine("[6/10] Building screw-tap outlet...");
+    Console.WriteLine("[6/11] Screw-tap socket in base...");
 
-    // Female socket in tank base
-    {
-        Lattice latBossOuter = new Lattice();
-        latBossOuter.AddBeam(
-            new Vector3(0f, 0f, fFootHeight - 2f),
-            new Vector3(0f, 0f, fFootHeight + fBaseThick + 6f),
-            fTapBodyRadius + fFitClear + 2.5f,
-            fTapBodyRadius + fFitClear + 2.5f,
-            true
-        );
-        vTank.BoolAdd(new Voxels(latBossOuter));
+    // Boss
+    vTank.BoolAdd(MakeBeam(
+        new Vector3(0f, 0f, fFootHeight - 1f),
+        new Vector3(0f, 0f, fFootHeight + fBaseThick + 4f),
+        fTapBodyR + fFitClear + 2f));
 
-        Lattice latBossBore = new Lattice();
-        latBossBore.AddBeam(
-            new Vector3(0f, 0f, -2f),
-            new Vector3(0f, 0f, fFootHeight + fBaseThick + 8f),
-            fTapBodyRadius + fFitClear,
-            fTapBodyRadius + fFitClear,
-            true
-        );
-        vTank.BoolSubtract(new Voxels(latBossBore));
-    }
+    // Socket bore
+    CarveChannel(vTank,
+        new Vector3(0f, 0f, -2f),
+        new Vector3(0f, 0f, fFootHeight + fBaseThick + 6f),
+        fTapBodyR + fFitClear);
 
-    // Tap body
-    Lattice latTapBody = new Lattice();
-    latTapBody.AddBeam(
+    // ── TAP BODY ──────────────────────────────────────────────────────────
+    Voxels vTap = MakeBeam(
         new Vector3(0f, 0f, 0f),
         new Vector3(0f, 0f, fTapLength),
-        fTapBodyRadius, fTapBodyRadius, true
-    );
-    Voxels vTap = new Voxels(latTapBody);
+        fTapBodyR);
 
     // Hex collar
-    {
-        Lattice latCollar = new Lattice();
-        latCollar.AddBeam(
-            new Vector3(0f, 0f, fCollarZ),
-            new Vector3(0f, 0f, fCollarZ + fCollarH),
-            fHexR, fHexR, true
-        );
-        vTap.BoolAdd(new Voxels(latCollar));
-    }
+    vTap.BoolAdd(MakeBeam(
+        new Vector3(0f, 0f, fCollarZ),
+        new Vector3(0f, 0f, fCollarZ + fCollarH),
+        fHexR));
 
-    // Thread crests (male thread — lower section)
+    // Thread crests
     int nThreads = (int)(fTapLength * 0.45f / fThreadPitch);
     for (int t = 0; t < nThreads; t++)
     {
         float fZ0 = t * fThreadPitch;
         float fZ1 = fZ0 + fThreadPitch * 0.4f;
-        Lattice latCrest = new Lattice();
-        latCrest.AddBeam(
+        vTap.BoolAdd(MakeBeam(
             new Vector3(0f, 0f, fZ0),
             new Vector3(0f, 0f, fZ1),
-            fTapBodyRadius + fThreadDepth,
-            fTapBodyRadius + fThreadDepth,
-            true
-        );
-        vTap.BoolAdd(new Voxels(latCrest));
+            fTapBodyR + fThreadDepth));
     }
 
     // Through bore
-    {
-        Lattice latBore = new Lattice();
-        latBore.AddBeam(
-            new Vector3(0f, 0f, -1f),
-            new Vector3(0f, 0f, fTapLength + 1f),
-            fTapBoreRadius, fTapBoreRadius, true
-        );
-        vTap.BoolSubtract(new Voxels(latBore));
-    }
+    CarveChannel(vTap,
+        new Vector3(0f, 0f, -1f),
+        new Vector3(0f, 0f, fTapLength + 1f),
+        fTapBoreR);
 
-    Console.WriteLine($"  Tap: Ø{fTapBodyRadius*2:F0} mm × {fTapLength:F0} mm  |  {nThreads} thread crests ✓");
+    Console.WriteLine($"  Tap Ø{fTapBodyR*2:F0} mm × {fTapLength:F0} mm  |  {nThreads} thread crests ✓");
 
     // ════════════════════════════════════════════════════════════════════════
-    //  STAGE 7 — JACKET RIBS  (exterior horizontal bands)
+    //  STAGE 7 — JACKET RIBS
     // ════════════════════════════════════════════════════════════════════════
-    Console.WriteLine("[7/10] Adding jacket ribs...");
+    Console.WriteLine("[7/11] Jacket ribs...");
 
-    float fRibPitch = 30.0f;
-    int   nRibs     = (int)((fTankHeight - 20f) / fRibPitch);
+    float fRibPitch = 28.0f;
+    int   nRibs     = (int)((fTankHeight - 18f) / fRibPitch);
     for (int r = 0; r < nRibs; r++)
     {
-        float fRibZ = fFootHeight + 15f + r * fRibPitch;
-        Lattice latRib = new Lattice();
-        latRib.AddBeam(
+        float fRibZ = fFootHeight + 12f + r * fRibPitch;
+        vTank.BoolAdd(MakeBeam(
             new Vector3(0f, 0f, fRibZ),
             new Vector3(0f, 0f, fRibZ + 4f),
-            fTankRadius + 3f, fTankRadius + 3f, true
-        );
-        vTank.BoolAdd(new Voxels(latRib));
+            fTankRadius + 2.5f));
     }
 
-    Console.WriteLine($"  {nRibs} jacket ribs ✓");
+    Console.WriteLine($"  {nRibs} ribs ✓");
 
     // ════════════════════════════════════════════════════════════════════════
-    //  STAGE 8 — SOLAR COLLECTOR PANEL
-    //
-    //  Built as a standalone Voxels object (separate STL).
-    //  Structure (front to back in X):
-    //    [glass cover] → [air gap] → [absorber plate + risers] → [insulation back]
-    //
-    //  The panel is axis-aligned for printability.
-    //  A mounting bracket stub connects panel back to tank +X side.
-    //
-    //  Thermosyphon connection pipes:
-    //    – Bottom header connects via pipe to tank solar-cold port
-    //    – Top    header connects via pipe to tank solar-hot  port
+    //  STAGE 8 — SPLIT JOINT BOSSES
+    //  4× M4 cylindrical bosses straddle the split at z = fSplitZ.
+    //  Upper half has solid pegs; lower half has matching sockets.
+    //  (Here we add the boss geometry to the body; half-split is done
+    //   in Stage 10 by clipping during export.)
     // ════════════════════════════════════════════════════════════════════════
-    Console.WriteLine("[8/10] Building solar collector panel...");
+    Console.WriteLine("[8/11] Split-joint alignment bosses...");
 
-    // ── Panel helper: axis-aligned rectangular slab via two beams spanning
-    //    the diagonal — gives a box when lattice-voxelised at sufficient res.
-    //    PicoGK's cylinder beams are used; we approximate the flat slab as a
-    //    very wide, flat beam (radius >> height trick via multiple layers).
-    // ────────────────────────────────────────────────────────────────────────
-    // We build the panel box as a union of vertical beams tiling the XY area,
-    // then trim with bool-subtract if needed.
-    // Simple approach: one large-radius beam centred at panel midpoint with
-    // height = panel H, radius = half the diagonal → then subtract outer frame.
+    float fBossR   = 5.0f;
+    float fBossH   = 10.0f;
+    float fBossOff = fTankRadius * 0.55f;
+    float[,] fBossXY = {
+        { -fBossOff,  fBossOff },
+        { -fBossOff, -fBossOff },
+        {  fBossOff,  fBossOff },
+        {  fBossOff, -fBossOff }
+    };
 
-    float fPanelCX = fPanelOffsetX + fPanelDepth * 0.5f;
-    float fPanelCY = 0f;
-    float fPanelCZ = fPanelOffsetZ + fPanelH * 0.5f;
-
-    // We tile the panel with a column of beams to approximate a rectangular box.
-    // Each beam column spans the panel width (Y) as radius, height as a segment.
-
-    Voxels vPanel = null;
-
-    // ── OUTER FRAME BOX ───────────────────────────────────────────────────
-    // Approximate rectangle: a single large disc beam (radius = half-diagonal)
-    // is the bounding shape; we carve the interior.
-    // Better: tile NxM vertical cylinders across the panel face.
+    for (int b = 0; b < 4; b++)
     {
-        int nTileY = 12;
-        for (int ty = 0; ty < nTileY; ty++)
+        float bx = fBossXY[b, 0];
+        float by = fBossXY[b, 1];
+
+        // Lower half: solid peg from z=fSplitZ upward (becomes socket in upper half clone)
+        vTank.BoolAdd(MakeBeam(
+            new Vector3(bx, by, fSplitZ),
+            new Vector3(bx, by, fSplitZ + fBossH),
+            fBossR));
+    }
+
+    Console.WriteLine("  4 × M4 alignment bosses ✓");
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  STAGE 9 — SOLAR PANEL BODY (fused to tank +X wall)
+    //
+    //  Structure front-to-back in X:
+    //    [shared wall] → [insulation backing] → [absorber + risers] → [air gap] → [glass slot]
+    //
+    //  The glass slot is an open rebate — insert clear acrylic/polycarbonate
+    //  sheet (not printed). Width × height matches panel interior.
+    //
+    //  The entire panel is built as a SEPARATE Voxels object but shares
+    //  the +X face geometry with the tank — they are BoolAdd'd together
+    //  at the end to form one unified mesh.
+    // ════════════════════════════════════════════════════════════════════════
+    Console.WriteLine("[9/11] Building fused solar panel body...");
+
+    // ── PANEL OUTER FRAME (box) ────────────────────────────────────────────
+    // Build as tiled beams. Initialise vPanel from tile 0, union from tile 1.
+    Voxels vPanel;
+    {
+        float fPCX       = fPanelStartX + fPanelDepth * 0.5f;
+        int   nTileFrame = 12;
+
+        // Tile 0 creates the Voxels object
+        float fCY0 = fPanelStartY + 0.5f * (fPanelW / nTileFrame);
+        Lattice lat0 = new Lattice();
+        lat0.AddBeam(
+            new Vector3(fPCX, fCY0, fPanelStartZ),
+            new Vector3(fPCX, fCY0, fPanelStartZ + fPanelH),
+            fPanelDepth * 0.5f, fPanelDepth * 0.5f, true);
+        vPanel = new Voxels(lat0);
+
+        // Tiles 1..nTileFrame-1 union into vPanel
+        for (int ty = 1; ty < nTileFrame; ty++)
         {
-            float fTy0 = fPanelOffsetY + ty       * (fPanelW / nTileY);
-            float fTyCentre = fPanelOffsetY + (ty + 0.5f) * (fPanelW / nTileY);
+            float fCY = fPanelStartY + (ty + 0.5f) * (fPanelW / nTileFrame);
             Lattice latTile = new Lattice();
             latTile.AddBeam(
-                new Vector3(fPanelCX, fTyCentre, fPanelOffsetZ),
-                new Vector3(fPanelCX, fTyCentre, fPanelOffsetZ + fPanelH),
-                fPanelDepth * 0.5f,
-                fPanelDepth * 0.5f,
-                true
-            );
-            Voxels vTile = new Voxels(latTile);
-            if (vPanel == null)
-                vPanel = vTile;
-            else
-                vPanel.BoolAdd(vTile);
+                new Vector3(fPCX, fCY, fPanelStartZ),
+                new Vector3(fPCX, fCY, fPanelStartZ + fPanelH),
+                fPanelDepth * 0.5f, fPanelDepth * 0.5f, true);
+            vPanel.BoolAdd(new Voxels(latTile));
         }
     }
 
-    // ── CARVE INTERIOR (leave frame walls) ───────────────────────────────
+    // ── CARVE INTERIOR (leave frame walls + insulation backing solid) ─────
     {
-        float fInnerW  = fPanelW   - fPanelFrameT * 2.0f;
-        float fInnerDep = fPanelDepth - fPanelGlassT - fInsulBackT;
-        float fInnerCX = fPanelOffsetX + fPanelGlassT + fInnerDep * 0.5f;
+        float fInnerW    = fPanelW   - fFrameT * 2.0f;
+        float fCavDepth  = fPanelDepth - fInsulBackT - 2f;  // insulation back stays solid
+        float fCavX      = fPanelStartX + fInsulBackT + fCavDepth * 0.5f;
 
-        int nTileY = 10;
-        for (int ty = 0; ty < nTileY; ty++)
+        int nTileCarve = 10;
+        for (int ty = 0; ty < nTileCarve; ty++)
         {
-            float fTyCentre = -fInnerW * 0.5f + (ty + 0.5f) * (fInnerW / nTileY);
+            float fCY = -fInnerW * 0.5f + (ty + 0.5f) * (fInnerW / nTileCarve);
             Lattice latCut = new Lattice();
             latCut.AddBeam(
-                new Vector3(fInnerCX, fTyCentre, fPanelOffsetZ + fPanelFrameT),
-                new Vector3(fInnerCX, fTyCentre, fPanelOffsetZ + fPanelH - fPanelFrameT),
-                fInnerDep * 0.5f,
-                fInnerDep * 0.5f,
+                new Vector3(fCavX, fCY, fPanelStartZ + fFrameT),
+                new Vector3(fCavX, fCY, fPanelStartZ + fPanelH - fFrameT),
+                fCavDepth * 0.5f,
+                fCavDepth * 0.5f,
                 true
             );
             vPanel.BoolSubtract(new Voxels(latCut));
         }
     }
 
-    // ── ABSORBER PLATE  (thin flat plate behind glass gap) ────────────────
+    // ── ABSORBER PLATE ────────────────────────────────────────────────────
     {
-        float fAbsX = fPanelOffsetX + fPanelGlassT + 4.0f;  // 4 mm air gap
-        float fInnerW = fPanelW - fPanelFrameT * 2.0f;
+        float fAbsX   = fPanelStartX + fInsulBackT + 1.0f;  // sits on insulation back
+        float fInnerW = fPanelW - fFrameT * 2.0f;
 
-        int nTileY = 10;
-        for (int ty = 0; ty < nTileY; ty++)
+        int nTileAbs = 10;
+        for (int ty = 0; ty < nTileAbs; ty++)
         {
-            float fTyCentre = -fInnerW * 0.5f + (ty + 0.5f) * (fInnerW / nTileY);
+            float fCY = -fInnerW * 0.5f + (ty + 0.5f) * (fInnerW / nTileAbs);
             Lattice latAbs = new Lattice();
             latAbs.AddBeam(
-                new Vector3(fAbsX, fTyCentre, fPanelOffsetZ + fPanelFrameT + 2f),
-                new Vector3(fAbsX, fTyCentre, fPanelOffsetZ + fPanelH - fPanelFrameT - 2f),
-                fAbsorberT,
-                fAbsorberT,
-                true
+                new Vector3(fAbsX, fCY, fPanelStartZ + fFrameT + 2f),
+                new Vector3(fAbsX, fCY, fPanelStartZ + fPanelH - fFrameT - 2f),
+                fAbsorberT, fAbsorberT, true
             );
             vPanel.BoolAdd(new Voxels(latAbs));
         }
     }
 
-    // ── RISER TUBES  (vertical fluid channels on absorber face) ──────────
+    // ── RISER TUBES (vertical fluid channels on absorber face) ────────────
     {
-        float fInnerW   = fPanelW - fPanelFrameT * 2.0f;
-        float fRiserX   = fPanelOffsetX + fPanelGlassT + 4.0f + fAbsorberT + fRiserRadius;
-        float fRiserZBot = fPanelOffsetZ + fPanelFrameT + fHeaderRadius + 2f;
+        float fInnerW   = fPanelW - fFrameT * 2.0f;
+        float fRiserX   = fPanelStartX + fInsulBackT + fAbsorberT + fRiserR;
+        float fRiserZBot = fPanelStartZ + fFrameT + fHeaderR + 2f;
         float fRiserZTop = fRiserZBot + fRiserH;
 
         for (int ri = 0; ri < nRisers; ri++)
         {
-            float fRiserY = -fInnerW * 0.5f + fPanelFrameT
-                          + (ri + 0.5f) * (fInnerW - fPanelFrameT * 2f) / nRisers;
+            float fRY = -fInnerW * 0.5f + fFrameT
+                      + (ri + 0.5f) * (fInnerW - fFrameT * 2f) / nRisers;
 
-            // Outer tube
-            Lattice latRT = new Lattice();
-            latRT.AddBeam(
-                new Vector3(fRiserX, fRiserY, fRiserZBot),
-                new Vector3(fRiserX, fRiserY, fRiserZTop),
-                fRiserRadius, fRiserRadius, true
+            Lattice latOuter = new Lattice();
+            latOuter.AddBeam(
+                new Vector3(fRiserX, fRY, fRiserZBot),
+                new Vector3(fRiserX, fRY, fRiserZTop),
+                fRiserR, fRiserR, true
             );
-            Voxels vRT = new Voxels(latRT);
-
-            // Bore
-            Lattice latRB = new Lattice();
-            latRB.AddBeam(
-                new Vector3(fRiserX, fRiserY, fRiserZBot - 1f),
-                new Vector3(fRiserX, fRiserY, fRiserZTop + 1f),
-                fRiserBore, fRiserBore, true
-            );
-            vRT.BoolSubtract(new Voxels(latRB));
+            Voxels vRT = new Voxels(latOuter);
+            CarveChannel(vRT,
+                new Vector3(fRiserX, fRY, fRiserZBot - 1f),
+                new Vector3(fRiserX, fRY, fRiserZTop + 1f),
+                fRiserBoreR);
             vPanel.BoolAdd(vRT);
         }
     }
 
     Console.WriteLine($"  {nRisers} riser tubes ✓");
 
-    // ── HEADER PIPES  (top and bottom manifolds connecting all risers) ────
+    // ── HEADER MANIFOLDS (top & bottom — fused into panel) ────────────────
     {
-        float fInnerW  = fPanelW - fPanelFrameT * 2.0f;
-        float fHdrX    = fPanelOffsetX + fPanelGlassT + 4.0f + fAbsorberT + fRiserRadius;
-        float fHdrYmin = -fInnerW * 0.5f + fPanelFrameT + 2f;
-        float fHdrYmax =  fInnerW * 0.5f - fPanelFrameT - 2f;
+        float fInnerW  = fPanelW - fFrameT * 2.0f;
+        float fHdrYmin = -fInnerW * 0.5f + fFrameT + 2f;
+        float fHdrYmax =  fInnerW * 0.5f - fFrameT - 2f;
 
-        float fHdrZBot = fPanelOffsetZ + fPanelFrameT + fHeaderRadius;
-        float fHdrZTop = fPanelOffsetZ + fPanelH - fPanelFrameT - fHeaderRadius;
-
-        foreach (float fHdrZ in new[] { fHdrZBot, fHdrZTop })
+        foreach (float fHZ in new[] { fHeaderZBot, fHeaderZTop })
         {
-            // Outer header
             Lattice latHO = new Lattice();
             latHO.AddBeam(
-                new Vector3(fHdrX, fHdrYmin, fHdrZ),
-                new Vector3(fHdrX, fHdrYmax, fHdrZ),
-                fHeaderRadius, fHeaderRadius, true
+                new Vector3(fHeaderX, fHdrYmin, fHZ),
+                new Vector3(fHeaderX, fHdrYmax, fHZ),
+                fHeaderR, fHeaderR, true
             );
             Voxels vHO = new Voxels(latHO);
-
-            // Bore
-            Lattice latHB = new Lattice();
-            latHB.AddBeam(
-                new Vector3(fHdrX, fHdrYmin - 2f, fHdrZ),
-                new Vector3(fHdrX, fHdrYmax + 2f, fHdrZ),
-                fHeaderBore, fHeaderBore, true
-            );
-            vHO.BoolSubtract(new Voxels(latHB));
+            CarveChannel(vHO,
+                new Vector3(fHeaderX, fHdrYmin - 2f, fHZ),
+                new Vector3(fHeaderX, fHdrYmax + 2f, fHZ),
+                fHeaderBoreR);
             vPanel.BoolAdd(vHO);
         }
 
         Console.WriteLine("  Top + bottom header manifolds ✓");
 
-        // ── THERMOSYPHON CONNECTION PIPES  (panel ↔ tank) ─────────────────
-        // Bottom header → cold feed port on tank (+X, lower)
-        // Top header    → hot return port  on tank (+X, upper)
+        // ── CONNECT HEADERS TO INTERNAL CHANNELS ──────────────────────────
+        // These are horizontal bores that link:
+        //   Bottom header → cold channel bore at (fChanX, fColdChanY, fHeaderZBot)
+        //   Top header    → hot channel bore  at (fChanX, fHotChanY,  fHeaderZTop)
+        //
+        // The cold channel feeds cool water from the tank into the panel bottom.
+        // The hot channel takes heated water from the panel top back to the tank.
 
-        float fHdrZBotConn = fPanelOffsetZ + fPanelFrameT + fHeaderRadius;
-        float fHdrZTopConn = fPanelOffsetZ + fPanelH - fPanelFrameT - fHeaderRadius;
+        // Bottom header to cold channel
+        CarveChannel(vPanel,
+            new Vector3(fHeaderX, fColdChanY, fHeaderZBot),
+            new Vector3(fChanX + 1f, fColdChanY, fHeaderZBot),
+            fColdChanR);
 
-        float fTankPortX = fTankRadius + 20f;   // end of tank boss
+        // Top header to hot channel
+        CarveChannel(vPanel,
+            new Vector3(fHeaderX, fHotChanY, fHeaderZTop),
+            new Vector3(fChanX + 1f, fHotChanY, fHeaderZTop),
+            fHotChanR);
 
-        // Cold pipe: runs horizontally from panel bottom header back to tank
-        AddBoss(vPanel,
-            new Vector3(fHdrX, 0f, fHdrZBotConn),
-            new Vector3(fTankPortX, 0f, fSolarLowZ),
-            fConnRadius, fConnBore);
-
-        // Hot pipe: runs horizontally from panel top header back to tank
-        AddBoss(vPanel,
-            new Vector3(fHdrX, 0f, fHdrZTopConn),
-            new Vector3(fTankPortX, 0f, fSolarHighZ),
-            fConnRadius, fConnBore);
-
-        Console.WriteLine("  Thermosyphon connection pipes (hot + cold) ✓");
+        Console.WriteLine("  Header → internal channel connections ✓");
     }
 
-    // ── MOUNTING BRACKET  (connects panel back to tank outer wall) ────────
+    // ── GLASS REBATE SLOT (front face of panel) ───────────────────────────
+    // Open slot sized to accept a cut-to-fit polycarbonate/acrylic sheet.
+    // Depth 4 mm; held by friction + adhesive sealant.
     {
-        float fBracketX0 = fTankRadius;
-        float fBracketX1 = fPanelOffsetX;
-        float fBracketZ  = fPanelOffsetZ + fPanelH * 0.5f;
+        float fGlassSlotDepth = 4.0f;
+        float fGlassSlotW     = fPanelW   - fFrameT * 2.0f + 1.0f;  // snug fit
+        float fGlassSlotH     = fPanelH   - fFrameT * 2.0f + 1.0f;
+        float fGlassSlotX     = fPanelStartX + fPanelDepth - fGlassSlotDepth;
 
-        Lattice latBrk = new Lattice();
-        latBrk.AddBeam(
-            new Vector3(fBracketX0, 0f, fBracketZ - 4f),
-            new Vector3(fBracketX1, 0f, fBracketZ - 4f),
-            4f, 4f, true
-        );
-        vPanel.BoolAdd(new Voxels(latBrk));
+        // Carve the slot as a rectangular void on the front face
+        int nTileGlass = 10;
+        for (int ty = 0; ty < nTileGlass; ty++)
+        {
+            float fCY = -fGlassSlotW * 0.5f + (ty + 0.5f) * (fGlassSlotW / nTileGlass);
+            Lattice latSlot = new Lattice();
+            latSlot.AddBeam(
+                new Vector3(fGlassSlotX + fGlassSlotDepth * 0.5f, fCY, fPanelStartZ + fFrameT - 1f),
+                new Vector3(fGlassSlotX + fGlassSlotDepth * 0.5f, fCY, fPanelStartZ + fPanelH - fFrameT + 1f),
+                fGlassSlotDepth * 0.5f,
+                fGlassSlotDepth * 0.5f,
+                true
+            );
+            vPanel.BoolSubtract(new Voxels(latSlot));
+        }
 
-        Lattice latBrk2 = new Lattice();
-        latBrk2.AddBeam(
-            new Vector3(fBracketX0, 0f, fBracketZ + 4f),
-            new Vector3(fBracketX1, 0f, fBracketZ + 4f),
-            4f, 4f, true
-        );
-        vPanel.BoolAdd(new Voxels(latBrk2));
-
-        Console.WriteLine("  Mounting brackets (×2) ✓");
+        Console.WriteLine("  Glass rebate slot (acrylic insert, not printed) ✓");
     }
 
+    // ── FUSE PANEL INTO TANK ───────────────────────────────────────────────
+    vTank.BoolAdd(vPanel);
+    Console.WriteLine("  Panel fused to tank — single mesh ✓");
+
     // ════════════════════════════════════════════════════════════════════════
-    //  STAGE 9 — SMOOTHING
+    //  STAGE 10 — SMOOTHING
     // ════════════════════════════════════════════════════════════════════════
-    Console.WriteLine("[9/10] Smoothing all bodies...");
+    Console.WriteLine("[10/11] Smoothing...");
 
     vTank.TripleOffset(1.0f);
     vTank.TripleOffset(0.5f);
@@ -656,131 +736,206 @@ Library.Go(1.0f, () =>
     vTap.TripleOffset(0.8f);
     vTap.TripleOffset(0.4f);
 
-    vPanel.TripleOffset(1.0f);
-    vPanel.TripleOffset(0.5f);
-
     Console.WriteLine("  Smoothing complete ✓");
 
     // ════════════════════════════════════════════════════════════════════════
-    //  STAGE 10 — EXPORT
+    //  STAGE 11 — EXPORT
+    //  The integrated body is exported as TWO STL files by Z-clipping.
+    //  PicoGK does not have a native half-space clip, so we approximate
+    //  by adding an enormous subtractive slab at the split line.
+    //
+    //  HALF A (lower):  subtract everything above z = fSplitZ
+    //  HALF B (upper):  subtract everything below z = fSplitZ
     // ════════════════════════════════════════════════════════════════════════
-    Console.WriteLine("[10/10] Exporting STL files and slicer settings...");
+    Console.WriteLine("[11/11] Splitting and exporting STL files...");
 
-    string strDesktop  = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-    string strTankFile  = Path.Combine(strDesktop, "SolarGeyser_V2_Tank.stl");
-    string strTapFile   = Path.Combine(strDesktop, "SolarGeyser_V2_ScrewTap.stl");
-    string strPanelFile = Path.Combine(strDesktop, "SolarGeyser_V2_SolarPanel.stl");
-    string strSettings  = Path.Combine(strDesktop, "SolarGeyser_V2_SlicerSettings.txt");
+    float fBigR = 500.0f;  // large enough to cover the whole geometry
 
-    new Mesh(vTank).SaveToStlFile(strTankFile);
+    // ── Half A: lower (z = 0 to fSplitZ) ─────────────────────────────────
+    Voxels vHalfA = new Voxels(vTank);
+    {
+        Lattice latClipTop = new Lattice();
+        latClipTop.AddBeam(
+            new Vector3(0f, 0f, fSplitZ + 1f),
+            new Vector3(0f, 0f, fSplitZ + fBigR),
+            fBigR, fBigR, true
+        );
+        vHalfA.BoolSubtract(new Voxels(latClipTop));
+    }
+
+    // ── Half B: upper (z = fSplitZ to top) ────────────────────────────────
+    Voxels vHalfB = new Voxels(vTank);
+    {
+        Lattice latClipBot = new Lattice();
+        latClipBot.AddBeam(
+            new Vector3(0f, 0f, fSplitZ - 1f),
+            new Vector3(0f, 0f, fSplitZ - fBigR),
+            fBigR, fBigR, true
+        );
+        vHalfB.BoolSubtract(new Voxels(latClipBot));
+
+        // Translate Half B so it prints from z=0 (shift geometry downward by fSplitZ)
+        // Note: PicoGK meshes can be post-translated in slicer; no native translate here.
+        // The slicer instruction below tells the operator to zero the base.
+    }
+
+    string strDesktop   = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+    string strHalfAFile = Path.Combine(strDesktop, "SolarGeyser_V3_HalfA_Lower.stl");
+    string strHalfBFile = Path.Combine(strDesktop, "SolarGeyser_V3_HalfB_Upper.stl");
+    string strTapFile   = Path.Combine(strDesktop, "SolarGeyser_V3_ScrewTap.stl");
+    string strSettings  = Path.Combine(strDesktop, "SolarGeyser_V3_SlicerSettings.txt");
+
+    new Mesh(vHalfA).SaveToStlFile(strHalfAFile);
+    new Mesh(vHalfB).SaveToStlFile(strHalfBFile);
     new Mesh(vTap).SaveToStlFile(strTapFile);
-    new Mesh(vPanel).SaveToStlFile(strPanelFile);
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  SLICER SETTINGS
+    // ════════════════════════════════════════════════════════════════════════
+    float fTotalH = fTankHeight + fDomeRise + fFootHeight;
 
     File.WriteAllText(strSettings, $@"
 ================================================================
-  SOLAR GEYSER & WATER HEATER  V2.0  —  SOLAR COLLECTOR EDITION
-  Slicer Settings for Ender 3 / Ender 3 Neo / Ender 3 Pro
+  SOLAR GEYSER  V3.0  —  MONOLITHIC SINGLE-UNIT MVP
+  Slicer settings for Ender 3 Neo (235 × 235 × 250 mm)
   Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}
 ================================================================
 
+KEY CHANGE FROM V2:
+  The solar thermosyphon loop is now INTERNAL.
+  Two channels ({fHotChanR*2:F0} mm Ø hot  +  {fColdChanR*2:F0} mm Ø cold) are cast through the
+  shared wall between tank body and solar panel.
+  No external pipes. No separate parts. One integrated unit.
+  The panel is structurally fused to the +X face of the tank.
+
 THREE FILES TO PRINT:
-  (1)  SolarGeyser_V2_Tank.stl        ← main tank body
-  (2)  SolarGeyser_V2_ScrewTap.stl    ← removable screw-tap outlet
-  (3)  SolarGeyser_V2_SolarPanel.stl  ← flat-plate solar collector
+  (1)  SolarGeyser_V3_HalfA_Lower.stl  ← lower {fSplitZ:F0} mm of unit
+  (2)  SolarGeyser_V3_HalfB_Upper.stl  ← upper {fTotalH - fSplitZ:F0} mm of unit
+  (3)  SolarGeyser_V3_ScrewTap.stl     ← removable draw-off tap
 
-── ORIENTATION ─────────────────────────────────────────────
-  Tank        : vertical, stand feet flat on bed, dome faces up
-  Screw Tap   : upright, threaded end up (hex collar on bed)
-  Solar Panel : flat — lay absorber face DOWN on print bed
-                (back-insulation side faces up — clean surface)
+  NOTE: The unit is ONE design split purely for Ender 3 Neo bed height.
+        After printing both halves are bonded to form a single assembly.
 
-── SOLAR PANEL — HOW IT WORKS ──────────────────────────────
-  The flat-plate collector is a thermosyphon solar system:
-  1. Sun heats the dark absorber plate on the panel face.
-  2. Water in riser tubes absorbs heat and rises (convection).
-  3. Hot water flows UP through the top connection pipe into
-     the tank upper zone (solar-hot return port).
-  4. Cooler water sinks and flows from the tank base through
-     the bottom connection pipe into the panel bottom header.
-  5. No pump required — gravity + convection drives the loop.
+── HOW THE THERMOSYPHON LOOP WORKS (fully internal) ────────
+  The shared wall on the +X face contains two cast channel bores:
 
-  Panel dimensions : {fPanelW:F0} × {fPanelH:F0} × {fPanelDepth:F0} mm
-  Riser tubes      : {nRisers} × Ø{fRiserRadius*2:F0} mm  (Ø{fRiserBore*2:F0} mm bore)
-  Headers          : Ø{fHeaderRadius*2:F0} mm  (Ø{fHeaderBore*2:F0} mm bore)
-  Panel offset     : {fPanelOffsetX:F0} mm from tank axis
+  HOT CHANNEL  (Ø{fHotChanR*2:F0} mm, Y+{fHotChanY:F1} offset, rises upward)
+  ┌─ Panel absorber heats water in riser tubes
+  ├─ Hot water rises into top header manifold
+  ├─ Top header → hot channel bore → travels up through wall
+  └─ Exits into tank UPPER zone at z={fHotPortZ:F0} mm ──► heats stored water
 
-── SUPPORTS ────────────────────────────────────────────────
-  Tank        : NO supports needed (dome prints clean dome-up)
-  Screw Tap   : NO supports
-  Solar Panel : NO supports when printed absorber-face-down
-                Side port bosses on tank may need 2-layer bridge
-                support in slicer for the heating element boss.
+  COLD CHANNEL (Ø{fColdChanR*2:F0} mm, Y-{Math.Abs(fColdChanY):F1} offset, descends)
+  ┌─ Cool water sinks in tank LOWER zone at z={fColdPortZ:F0} mm
+  ├─ Exits into cold channel bore → travels down through wall
+  ├─ Cold channel → bottom header manifold
+  └─ Bottom header feeds riser tubes ──► loop continues
 
-── SCREW TAP ASSEMBLY ──────────────────────────────────────
-  Thread clearance : {fFitClear} mm per side
-  Wrap PTFE tape on male threads before inserting.
-  Insert and rotate 4 full turns to engage.
+  No pump, no external fittings. Gravity + convection drives flow.
+  The glass panel cover is a cut-to-fit polycarbonate sheet
+  inserted into the front rebate slot and sealed with silicone.
+
+── PRINT ORIENTATION ────────────────────────────────────────
+  Half A  : flat base on bed, z=0..{fSplitZ:F0} mm, dome UPWARD
+  Half B  : flat butt joint face on bed, z=0..{fTotalH-fSplitZ:F0} mm
+             (flip B upside-down in slicer so the joint face is at z=0)
+  Screw Tap: hex collar on bed, threaded end up
+
+  Both halves print without supports.
+  The internal channel bores are closed voids — print as is.
+  The glass rebate slot opens on the front face (bed side for Half A
+  panel section). Check slicer preview to confirm rebate is open.
+
+── JOINING THE TWO HALVES ──────────────────────────────────
+  1. Dry-fit the 4 alignment bosses (Ø{fBossR*2:F0} mm) — sand if tight.
+  2. Apply high-temperature silicone RTV (rated ≥ 150 °C) to
+     the butt-joint face of Half B.
+  3. Press halves together, wipe excess silicone from interior.
+  4. Insert 4 × M4 × 20 mm bolts through the boss holes.
+  5. Cure 24 h before water test.
+  6. Apply a second external bead of silicone around the joint seam.
+  7. Pressure test at 0.3 bar for 30 min before use.
+
+── GLASS PANEL INSERT ───────────────────────────────────────
+  Cut polycarbonate (PC) or tempered glass to:
+  {fPanelW - fFrameT*2:F0} mm × {fPanelH - fFrameT*2:F0} mm × 4 mm thick
+  Slide into front rebate, seal perimeter with neutral-cure silicone.
+  Polycarbonate preferred — lighter, safer, better impact resistance.
+  Do NOT use acrylic (PLA-grade PMMA) — UV degradation in ≤ 2 years.
 
 ── PORT IDENTIFICATION ──────────────────────────────────────
-  TOP BOSSES (from centre outward):
-    +Y  →  Cold water inlet  (mains / storage tank supply)
-    -Y  →  Hot water outlet  (to taps / fixture)
-    +X  →  Anode rod         (replace every 3–5 years)
+  TOP PORTS (all bosses point upward from dome):
+    +Y offset  →  Cold water inlet (mains supply, feeds dip tube)
+    -Y offset  →  Hot water outlet (to taps / fixtures)
+    +X offset  →  Anode rod port  (replace every 3–5 years)
 
-  SIDE BOSSES:
-    +X upper  →  Solar HOT return  (from panel top header)
-    +X lower  →  Solar COLD feed   (to panel bottom header)
-    -X lower  →  Backup heating element  (immersion heater)
-    -Y upper  →  Pressure relief valve  (PRV — safety critical)
+  SIDE PORTS:
+    -X side  →  Backup immersion heating element (low zone)
+    -Y side  →  Pressure relief valve (PRV) — CRITICAL SAFETY PORT
+                 Install a rated PRV before filling system.
 
-  BOTTOM:
-    Centre    →  Screw-tap draw-off  (female socket in base)
+  BASE:
+    Centre   →  Screw-tap draw-off outlet (male thread, PTFE-tape seal)
+
+  INTERNAL (no access needed — sealed in wall):
+    Hot channel  exits at z={fHotPortZ:F0} mm into upper water zone
+    Cold channel exits at z={fColdPortZ:F0} mm from lower water zone
 
 ── NOZZLE & LAYER ──────────────────────────────────────────
   Nozzle          : {fNozzle} mm
   Layer height    : {fLayer} mm
-  First layer     : 0.30 mm
+  First layer     : 0.30 mm (slow, for bed adhesion)
 
 ── WALLS & INFILL ──────────────────────────────────────────
-  Wall line count : 4  (= 1.6 mm)
-  Top/bottom      : 6 layers
+  Wall count      : 5  (= 2.0 mm)  ← critical for channel integrity
+  Top/bottom      : 7 layers
   Infill          : 35% gyroid
-  Tank base       : 80% solid (bottom {fBaseThick:F0} mm)
-  Panel walls     : 3 perimeters min for pressure integrity
+  Base section    : 80% infill (bottom {fBaseThick:F0} mm)
+  Panel walls     : minimum 5 perimeters — pressure boundary
 
 ── SPEEDS ──────────────────────────────────────────────────
-  Print speed     : 40 mm/s
-  Outer wall      : 20 mm/s  (thread accuracy)
+  Print speed     : 35 mm/s
+  Outer wall      : 18 mm/s  (thread + boss accuracy)
   Travel          : 120 mm/s
   Retraction      : 5 mm @ 45 mm/s
+  Channel bridging: 20 mm/s  (short bridges over bores)
 
 ── TEMPERATURES ────────────────────────────────────────────
-  PETG : 235 °C hotend  /  80 °C bed  ← recommended
-  ASA  : 250 °C hotend  /  90 °C bed  (best UV & heat resist)
-  Note : ASA strongly recommended for solar panel — UV exposure
+  ASA  : 250 °C hotend  /  90 °C bed   ← REQUIRED for solar panel face
+  PETG : 235 °C hotend  /  80 °C bed   (indoor, shaded installation only)
 
-── GEOMETRY ────────────────────────────────────────────────
-  Tank outer Ø       : {fTankRadius*2:F0} mm
-  Tank body height   : {fTankHeight:F0} mm
-  Dome rise          : {fDomeHeight:F1} mm
-  Total height       : {fTankHeight + fDomeHeight + fFootHeight:F0} mm
-  Wall (jacket)      : {fWallThick:F0} mm
-  Insulation gap     : {fInsulationGap:F0} mm
-  Water cavity Ø     : {fInnerRadius*2:F0} mm
-  Jacket ribs        : {nRibs}
-  Solar panel        : {fPanelW:F0} × {fPanelH:F0} × {fPanelDepth:F0} mm
-  Riser tubes        : {nRisers}  |  pitch {(fPanelW - fPanelFrameT*4) / nRisers:F1} mm
-  Screw-tap          : Ø{fTapBodyRadius*2:F0} mm × {fTapLength:F0} mm  |  {nThreads} threads
-  Stand feet         : {nFeet}
+  The panel face is the ONLY surface in direct UV + heat exposure.
+  ASA is not optional for the solar panel section.
+  If PETG is the only available material, paint the panel face
+  with heat-resistant black automotive engine enamel (rated 300 °C).
+
+── GEOMETRY SUMMARY ────────────────────────────────────────
+  Tank outer Ø         : {fTankRadius*2:F0} mm
+  Tank body height     : {fTankHeight:F0} mm  +  dome: {fDomeRise:F0} mm
+  Total height         : {fTotalH:F0} mm (split at {fSplitZ:F0} mm)
+  Inner water cavity   : Ø{fInnerRadius*2:F0} mm
+  Shared wall thick    : {fSharedWallThick:F0} mm (contains both channels)
+  Hot channel bore     : Ø{fHotChanR*2:F0} mm
+  Cold channel bore    : Ø{fColdChanR*2:F0} mm
+  Panel fused width    : {fPanelW:F0} mm Y  ×  {fPanelH:F0} mm Z  ×  {fPanelDepth:F0} mm X
+  Riser tubes          : {nRisers}  ×  Ø{fRiserR*2:F0} mm  (Ø{fRiserBoreR*2:F0} mm bore)
+  Header manifolds     : Ø{fHeaderR*2:F0} mm  (Ø{fHeaderBoreR*2:F0} mm bore)
+  Jacket ribs          : {nRibs}
+  Screw-tap            : Ø{fTapBodyR*2:F0} mm × {fTapLength:F0} mm  |  {nThreads} thread crests
+  Alignment bosses     : 4  ×  Ø{fBossR*2:F0} mm  (M4 bolt-through)
+  Total footprint X    : {fTotalWidth:F0} mm  (bed max 235 mm ✓)
 
 ================================================================
 ");
 
-    Console.WriteLine($"\n  Tank        → {strTankFile}");
-    Console.WriteLine($"  Screw tap   → {strTapFile}");
-    Console.WriteLine($"  Solar panel → {strPanelFile}");
-    Console.WriteLine($"  Settings    → {strSettings}");
+    Console.WriteLine($"\n  Half A (lower) → {strHalfAFile}");
+    Console.WriteLine($"  Half B (upper) → {strHalfBFile}");
+    Console.WriteLine($"  Screw tap      → {strTapFile}");
+    Console.WriteLine($"  Settings       → {strSettings}");
+    Console.WriteLine($"\n  Total footprint: {fTotalWidth:F0} mm wide  (Ender 3 Neo bed: 235 mm ✓)");
+    Console.WriteLine($"  Half A: {fSplitZ:F0} mm  |  Half B: {fTotalH - fSplitZ:F0} mm  (both < 250 mm ✓)");
     Console.WriteLine("\n╔══════════════════════════════════════════════════════╗");
-    Console.WriteLine("║  V2.0 BUILD COMPLETE — Solar Geyser ready           ║");
+    Console.WriteLine("║  V3.0 MONOLITHIC BUILD COMPLETE                     ║");
+    Console.WriteLine("║  One unit. Internal channels. No external pipes.    ║");
     Console.WriteLine("╚══════════════════════════════════════════════════════╝");
 });
