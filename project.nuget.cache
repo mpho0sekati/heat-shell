@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "dgSpecHash": "oqGrsUUlA3I=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\Ekasi Lab\\Desktop\\SolarGeyserV3_Clean\\SolarGeyserV3\\SolarGeyserV3.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Ekasi Lab\\.nuget\\packages\\picogk\\2.0.0\\picogk.2.0.0.nupkg.sha512",
+    "C:\\Users\\Ekasi Lab\\.nuget\\packages\\skiasharp\\3.119.0\\skiasharp.3.119.0.nupkg.sha512",
+    "C:\\Users\\Ekasi Lab\\.nuget\\packages\\skiasharp.nativeassets.macos\\3.119.0\\skiasharp.nativeassets.macos.3.119.0.nupkg.sha512",
+    "C:\\Users\\Ekasi Lab\\.nuget\\packages\\skiasharp.nativeassets.win32\\3.119.0\\skiasharp.nativeassets.win32.3.119.0.nupkg.sha512"
+  ],
+  "logs": []
+}
